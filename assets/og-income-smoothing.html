@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@500&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { width: 1200px; height: 630px; overflow: hidden; font-family: 'Inter', sans-serif; }
+  .card {
+    width: 1200px; height: 630px;
+    background: #F8FAFC;
+    display: flex; flex-direction: column;
+    padding: 60px 80px; position: relative;
+  }
+  .top { display: flex; align-items: center; gap: 16px; margin-bottom: 40px; }
+  .icon {
+    width: 48px; height: 48px; background: #0D9488; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .icon svg { width: 28px; height: 28px; }
+  .brand { font-size: 20px; font-weight: 700; color: #1E293B; }
+  .brand span { color: #0D9488; }
+  h2 { font-size: 44px; font-weight: 800; color: #1E293B; line-height: 1.15; margin-bottom: 12px; }
+  h2 em { font-style: normal; color: #0D9488; }
+  .subtitle { font-size: 20px; color: #64748B; margin-bottom: 40px; }
+  .comparison {
+    display: flex; gap: 32px; flex: 1;
+  }
+  .panel {
+    flex: 1; border-radius: 16px; padding: 32px;
+    display: flex; flex-direction: column;
+  }
+  .panel.before { background: #FEF2F2; border: 2px solid #FECACA; }
+  .panel.after { background: #F0FDF4; border: 2px solid #BBF7D0; }
+  .panel-title { font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 20px; }
+  .panel.before .panel-title { color: #DC2626; }
+  .panel.after .panel-title { color: #16A34A; }
+  .months { display: flex; flex-direction: column; gap: 8px; flex: 1; }
+  .month { display: flex; align-items: center; gap: 12px; }
+  .month-name { font-size: 13px; color: #64748B; width: 36px; font-weight: 600; }
+  .month-bar { height: 22px; border-radius: 4px; transition: width 0.3s; }
+  .panel.before .month-bar { background: linear-gradient(90deg, #F97316, #FB923C); }
+  .panel.after .month-bar { background: linear-gradient(90deg, #22C55E, #4ADE80); }
+  .month-val { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #64748B; }
+  .arrow-center {
+    display: flex; align-items: center; justify-content: center; width: 60px;
+    font-size: 36px; color: #0D9488;
+  }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="top">
+    <div class="icon">
+      <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M4 14 C8 6, 12 20, 14 12 C16 4, 20 18, 24 10" stroke="#F8FAFC" stroke-width="2.5" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div class="brand"><span>Flow</span>Budget</div>
+  </div>
+  <h2>Turn Chaos Into <em>Consistency</em></h2>
+  <div class="subtitle">Income Smoothing™ — your secret weapon against irregular pay</div>
+  <div class="comparison">
+    <div class="panel before">
+      <div class="panel-title">❌ Without Smoothing</div>
+      <div class="months">
+        <div class="month"><span class="month-name">Jan</span><div class="month-bar" style="width:280px"></div><span class="month-val">$6,200</span></div>
+        <div class="month"><span class="month-name">Feb</span><div class="month-bar" style="width:80px"></div><span class="month-val">$1,800</span></div>
+        <div class="month"><span class="month-name">Mar</span><div class="month-bar" style="width:340px"></div><span class="month-val">$7,500</span></div>
+        <div class="month"><span class="month-name">Apr</span><div class="month-bar" style="width:50px"></div><span class="month-val">$1,100</span></div>
+        <div class="month"><span class="month-name">May</span><div class="month-bar" style="width:200px"></div><span class="month-val">$4,400</span></div>
+      </div>
+    </div>
+    <div class="arrow-center">→</div>
+    <div class="panel after">
+      <div class="panel-title">✅ With Smoothing</div>
+      <div class="months">
+        <div class="month"><span class="month-name">Jan</span><div class="month-bar" style="width:190px"></div><span class="month-val">$4,200</span></div>
+        <div class="month"><span class="month-name">Feb</span><div class="month-bar" style="width:190px"></div><span class="month-val">$4,200</span></div>
+        <div class="month"><span class="month-name">Mar</span><div class="month-bar" style="width:190px"></div><span class="month-val">$4,200</span></div>
+        <div class="month"><span class="month-name">Apr</span><div class="month-bar" style="width:190px"></div><span class="month-val">$4,200</span></div>
+        <div class="month"><span class="month-name">May</span><div class="month-bar" style="width:190px"></div><span class="month-val">$4,200</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

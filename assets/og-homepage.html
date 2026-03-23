@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@500&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { width: 1200px; height: 630px; overflow: hidden; font-family: 'Inter', sans-serif; }
+  .card {
+    width: 1200px; height: 630px;
+    background: linear-gradient(135deg, #0D9488 0%, #0F766E 60%, #1E293B 100%);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 60px 80px; position: relative;
+  }
+  .left { max-width: 560px; z-index: 1; }
+  .badge {
+    display: inline-block; background: rgba(255,255,255,0.15);
+    padding: 8px 20px; border-radius: 20px;
+    font-size: 14px; font-weight: 600; color: #F8FAFC;
+    letter-spacing: 1px; text-transform: uppercase;
+    margin-bottom: 24px; backdrop-filter: blur(10px);
+  }
+  h1 { font-size: 52px; font-weight: 800; color: #F8FAFC; line-height: 1.1; margin-bottom: 20px; }
+  h1 span { color: #22C55E; }
+  p { font-size: 22px; color: rgba(248,250,252,0.8); line-height: 1.5; margin-bottom: 32px; }
+  .url {
+    font-family: 'JetBrains Mono', monospace; font-size: 16px;
+    color: #F97316; background: rgba(0,0,0,0.2);
+    padding: 10px 20px; border-radius: 8px; display: inline-block;
+  }
+  .right { position: relative; width: 420px; height: 420px; }
+  .wave-bg {
+    position: absolute; right: -40px; top: -80px;
+    width: 500px; height: 500px; opacity: 0.1;
+  }
+  .chart-mock {
+    background: rgba(255,255,255,0.08); border-radius: 20px;
+    padding: 40px; width: 400px; height: 300px;
+    backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.1);
+    position: relative; overflow: hidden;
+  }
+  .chart-label { font-size: 13px; color: rgba(248,250,252,0.5); font-weight: 600; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 20px; }
+  .bar-row { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  .bar-label { font-size: 14px; color: rgba(248,250,252,0.6); width: 50px; }
+  .bar { height: 28px; border-radius: 6px; }
+  .bar.income { background: linear-gradient(90deg, #F97316, #FB923C); }
+  .bar.smooth { background: linear-gradient(90deg, #22C55E, #4ADE80); }
+  .legend { display: flex; gap: 24px; margin-top: 20px; }
+  .legend-item { display: flex; align-items: center; gap: 8px; font-size: 13px; color: rgba(248,250,252,0.6); }
+  .legend-dot { width: 10px; height: 10px; border-radius: 3px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="left">
+    <div class="badge">Personal Finance</div>
+    <h1>Smooth Your Income.<br><span>Own Your Cash Flow.</span></h1>
+    <p>The smart budgeting app that turns irregular income into predictable monthly cash flow.</p>
+    <div class="url">flowbudget.ashketing.com</div>
+  </div>
+  <div class="right">
+    <div class="chart-mock">
+      <div class="chart-label">Monthly Cash Flow</div>
+      <div class="bar-row"><div class="bar-label">Jan</div><div class="bar income" style="width:280px"></div></div>
+      <div class="bar-row"><div class="bar-label">Feb</div><div class="bar income" style="width:120px"></div></div>
+      <div class="bar-row"><div class="bar-label">Mar</div><div class="bar income" style="width:320px"></div></div>
+      <div class="bar-row"><div class="bar-label">Apr</div><div class="bar income" style="width:90px"></div></div>
+      <div class="bar-row" style="margin-top:8px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.1)">
+        <div class="bar-label" style="font-weight:600; color:#22C55E">Avg</div>
+        <div class="bar smooth" style="width:200px"></div>
+      </div>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#F97316"></div>Actual</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#22C55E"></div>Smoothed</div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

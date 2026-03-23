@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@500&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { width: 1200px; height: 630px; overflow: hidden; font-family: 'Inter', sans-serif; }
+  .card {
+    width: 1200px; height: 630px;
+    background: linear-gradient(180deg, #F8FAFC 0%, #F1F5F9 100%);
+    display: flex; flex-direction: column; align-items: center;
+    padding: 50px 80px;
+  }
+  .top { text-align: center; margin-bottom: 36px; }
+  .brand { font-size: 18px; font-weight: 700; color: #0D9488; margin-bottom: 12px; }
+  h2 { font-size: 40px; font-weight: 800; color: #1E293B; }
+  .plans { display: flex; gap: 24px; width: 100%; justify-content: center; }
+  .plan {
+    width: 320px; border-radius: 20px; padding: 36px 32px;
+    background: white; border: 2px solid #E2E8F0;
+    display: flex; flex-direction: column;
+  }
+  .plan.popular {
+    border-color: #0D9488; background: white;
+    box-shadow: 0 8px 32px rgba(13,148,136,0.15);
+    transform: scale(1.04); position: relative;
+  }
+  .popular-badge {
+    position: absolute; top: -14px; left: 50%; transform: translateX(-50%);
+    background: #0D9488; color: white; font-size: 12px; font-weight: 700;
+    padding: 5px 20px; border-radius: 20px; text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .plan-name { font-size: 18px; font-weight: 700; color: #1E293B; margin-bottom: 8px; }
+  .plan-price { font-family: 'JetBrains Mono', monospace; margin-bottom: 4px; }
+  .plan-price .amount { font-size: 40px; font-weight: 800; color: #1E293B; }
+  .plan-price .period { font-size: 16px; color: #94A3B8; }
+  .plan-desc { font-size: 14px; color: #64748B; margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid #F1F5F9; }
+  .features { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+  .features li { font-size: 14px; color: #475569; display: flex; align-items: center; gap: 8px; }
+  .features li::before { content: "✓"; color: #22C55E; font-weight: 700; font-size: 16px; }
+  .plan.free .plan-price .amount { color: #64748B; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="top">
+    <div class="brand">FlowBudget</div>
+    <h2>Simple, Transparent Pricing</h2>
+  </div>
+  <div class="plans">
+    <div class="plan free">
+      <div class="plan-name">Free</div>
+      <div class="plan-price"><span class="amount">$0</span><span class="period">/mo</span></div>
+      <div class="plan-desc">Get started with the basics</div>
+      <ul class="features">
+        <li>1 income source</li>
+        <li>Basic budgeting</li>
+        <li>Monthly reports</li>
+        <li>Mobile app</li>
+      </ul>
+    </div>
+    <div class="plan popular">
+      <div class="popular-badge">Most Popular</div>
+      <div class="plan-name">Pro</div>
+      <div class="plan-price"><span class="amount">$9</span><span class="period">/mo</span></div>
+      <div class="plan-desc">For freelancers & gig workers</div>
+      <ul class="features">
+        <li>Unlimited income sources</li>
+        <li>Income Smoothing™</li>
+        <li>Smart categorization</li>
+        <li>Tax reserve auto-set</li>
+        <li>Priority support</li>
+      </ul>
+    </div>
+    <div class="plan">
+      <div class="plan-name">Business</div>
+      <div class="plan-price"><span class="amount">$29</span><span class="period">/mo</span></div>
+      <div class="plan-desc">For teams & agencies</div>
+      <ul class="features">
+        <li>Everything in Pro</li>
+        <li>Team collaboration</li>
+        <li>Client invoicing</li>
+        <li>API access</li>
+        <li>Custom reports</li>
+      </ul>
+    </div>
+  </div>
+</div>
+</body>
+</html>
