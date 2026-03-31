@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,18 +29,42 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  mockIncome,
-  getSmoothedAverage,
-  type MockIncome,
-} from "@/lib/mock-data";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { Plus, Trash2, TrendingUp, DollarSign } from "lucide-react";
+import { Plus, Trash2, TrendingUp, DollarSign, Eye, Loader2 } from "lucide-react";
+
+interface IncomeEntry {
+  id: number;
+  amount: string;
+  source: string;
+  date: string;
+  isRecurring: boolean;
+  frequency: string | null;
+}
+
+interface DetectedMonthly {
+  month: string;
+  totalAmount: string;
+  count: number;
+}
+
+interface DetectedTransaction {
+  id: number;
+  amount: string;
+  amountEur: string | null;
+  currency: string | null;
+  description: string | null;
+  date: string;
+  account: string | null;
+}
 
 export default function IncomePage() {
-  const [entries, setEntries] = useState<MockIncome[]>(mockIncome);
+  const [entries, setEntries] = useState<IncomeEntry[]>([]);
+  const [detectedMonthly, setDetectedMonthly] = useState<DetectedMonthly[]>([]);
+  const [detectedTransactions, setDetectedTransactions] = useState<DetectedTransaction[]>([]);
+  const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [view, setView] = useState<"all" | "monthly" | "weekly">("all");
+  const [submitting, setSubmitting] = useState(false);
 
   // Form state
   const [amount, setAmount] = useState("");
@@ -48,6 +72,32 @@ export default function IncomePage() {
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [isRecurring, setIsRecurring] = useState(false);
   const [frequency, setFrequency] = useState("monthly");
+
+  const fetchData = useCallback(async () => {
+    try {
+      const [incomeRes, detectedRes] = await Promise.all([
+        fetch("/api/income"),
+        fetch("/api/income/detected"),
+      ]);
+      if (incomeRes.ok) {
+        const data = await incomeRes.json();
+        setEntries(data.entries || []);
+      }
+      if (detectedRes.ok) {
+        const data = await detectedRes.json();
+        setDetectedMonthly(data.monthly || []);
+        setDetectedTransactions(data.transactions || []);
+      }
+    } catch (err) {
+      console.error("Failed to fetch income data:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const filteredEntries = useMemo(() => {
     const sorted = [...entries].sort(
@@ -65,29 +115,68 @@ export default function IncomePage() {
     return sorted;
   }, [entries, view]);
 
-  const totalIncome = filteredEntries.reduce((s, e) => s + e.amount, 0);
-  const smoothedAvg = getSmoothedAverage();
+  const totalIncome = filteredEntries.reduce((s, e) => s + Number(e.amount), 0);
 
-  function handleSubmit(e: React.FormEvent) {
+  // 6-month smoothed average from real data
+  const smoothedAvg = useMemo(() => {
+    const monthTotals: Record<string, number> = {};
+    for (const e of entries) {
+      const key = e.date.slice(0, 7);
+      monthTotals[key] = (monthTotals[key] || 0) + Number(e.amount);
+    }
+    const sortedMonths = Object.keys(monthTotals).sort().slice(-6);
+    if (sortedMonths.length === 0) return 0;
+    const sum = sortedMonths.reduce((s, m) => s + monthTotals[m], 0);
+    return Math.round(sum / sortedMonths.length);
+  }, [entries]);
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const newEntry: MockIncome = {
-      id: Date.now(),
-      amount: parseFloat(amount),
-      source,
-      date,
-      isRecurring,
-      frequency: isRecurring ? frequency : undefined,
-    };
-    setEntries((prev) => [newEntry, ...prev]);
-    setDialogOpen(false);
-    setAmount("");
-    setSource("");
-    setDate(new Date().toISOString().split("T")[0]);
-    setIsRecurring(false);
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/income", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amount: parseFloat(amount),
+          source,
+          date,
+          isRecurring,
+          frequency: isRecurring ? frequency : null,
+        }),
+      });
+      if (res.ok) {
+        setDialogOpen(false);
+        setAmount("");
+        setSource("");
+        setDate(new Date().toISOString().split("T")[0]);
+        setIsRecurring(false);
+        await fetchData();
+      }
+    } catch (err) {
+      console.error("Failed to add income:", err);
+    } finally {
+      setSubmitting(false);
+    }
   }
 
-  function handleDelete(id: number) {
-    setEntries((prev) => prev.filter((e) => e.id !== id));
+  async function handleDelete(id: number) {
+    try {
+      const res = await fetch(`/api/income/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        await fetchData();
+      }
+    } catch (err) {
+      console.error("Failed to delete income:", err);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-8 w-8 animate-spin text-teal-500" />
+      </div>
+    );
   }
 
   return (
@@ -171,7 +260,14 @@ export default function IncomePage() {
                   </Select>
                 </div>
               )}
-              <Button type="submit" className="w-full bg-teal-500 hover:bg-teal-600">
+              <Button
+                type="submit"
+                className="w-full bg-teal-500 hover:bg-teal-600"
+                disabled={submitting}
+              >
+                {submitting ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : null}
                 Add Income
               </Button>
             </form>
@@ -188,7 +284,12 @@ export default function IncomePage() {
             </div>
             <div>
               <p className="text-sm text-muted-foreground">
-                {view === "all" ? "Total" : view === "monthly" ? "This Month" : "This Week"} Income
+                {view === "all"
+                  ? "Total"
+                  : view === "monthly"
+                    ? "This Month"
+                    : "This Week"}{" "}
+                Income
               </p>
               <p className="font-mono text-2xl font-bold text-charcoal">
                 {formatCurrency(totalIncome)}
@@ -217,7 +318,10 @@ export default function IncomePage() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-lg">Income History</CardTitle>
-          <Tabs value={view} onValueChange={(v) => setView(v as typeof view)}>
+          <Tabs
+            value={view}
+            onValueChange={(v) => setView(v as typeof view)}
+          >
             <TabsList>
               <TabsTrigger value="all">All</TabsTrigger>
               <TabsTrigger value="monthly">Monthly</TabsTrigger>
@@ -243,9 +347,11 @@ export default function IncomePage() {
                     <TableCell className="text-sm">
                       {formatDate(entry.date)}
                     </TableCell>
-                    <TableCell className="font-medium">{entry.source}</TableCell>
+                    <TableCell className="font-medium">
+                      {entry.source}
+                    </TableCell>
                     <TableCell className="text-right font-mono font-semibold text-fresh-600">
-                      {formatCurrency(entry.amount)}
+                      {formatCurrency(Number(entry.amount))}
                     </TableCell>
                     <TableCell>
                       <Badge
@@ -275,14 +381,112 @@ export default function IncomePage() {
                 ))}
                 {filteredEntries.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                      No income entries found for this period
+                    <TableCell
+                      colSpan={5}
+                      className="text-center text-muted-foreground py-8"
+                    >
+                      No income entries yet — add your first one above
                     </TableCell>
                   </TableRow>
                 )}
               </TableBody>
             </Table>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Detected Income Section */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Eye className="h-5 w-5 text-teal-500" />
+            <CardTitle className="text-lg">Detected Income</CardTitle>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Positive incoming transactions from your bank accounts (read-only)
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {detectedMonthly.length === 0 ? (
+            <p className="text-center text-muted-foreground py-6">
+              No incoming transactions detected yet
+            </p>
+          ) : (
+            <>
+              {/* Monthly summary */}
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {detectedMonthly.slice(0, 6).map((m) => {
+                  const monthDate = new Date(m.month + "-01");
+                  const label = monthDate.toLocaleDateString("en-US", {
+                    month: "long",
+                    year: "numeric",
+                  });
+                  return (
+                    <div
+                      key={m.month}
+                      className="rounded-lg border bg-gradient-to-br from-teal-50 to-white p-4"
+                    >
+                      <p className="text-xs font-medium text-muted-foreground">
+                        {label}
+                      </p>
+                      <p className="font-mono text-xl font-bold text-charcoal">
+                        {formatCurrency(Number(m.totalAmount))}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {m.count} transaction{m.count !== 1 ? "s" : ""}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Recent detected transactions */}
+              {detectedTransactions.length > 0 && (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Description</TableHead>
+                        <TableHead>Account</TableHead>
+                        <TableHead className="text-right">Amount</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {detectedTransactions.slice(0, 20).map((tx) => (
+                        <TableRow key={tx.id}>
+                          <TableCell className="text-sm">
+                            {formatDate(tx.date)}
+                          </TableCell>
+                          <TableCell className="font-medium max-w-[200px] truncate">
+                            {tx.description || "—"}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {tx.account || "—"}
+                          </TableCell>
+                          <TableCell className="text-right font-mono font-semibold text-fresh-600">
+                            {formatCurrency(
+                              Number(tx.amountEur || tx.amount)
+                            )}
+                            {tx.currency && tx.currency !== "EUR" && (
+                              <span className="ml-1 text-xs text-muted-foreground">
+                                ({formatCurrency(Number(tx.amount), tx.currency)})
+                              </span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  {detectedTransactions.length > 20 && (
+                    <p className="text-center text-xs text-muted-foreground py-2">
+                      Showing 20 of {detectedTransactions.length} transactions
+                    </p>
+                  )}
+                </div>
+              )}
+            </>
+          )}
         </CardContent>
       </Card>
     </div>
