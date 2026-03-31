@@ -26,7 +26,9 @@ export async function GET(request: NextRequest) {
       .where(
         and(
           eq(transactions.userId, session.userId),
-          gte(transactions.date, cutoff)
+          gte(transactions.date, cutoff),
+          sql`(${transactions.currency} = 'EUR' OR ${transactions.currency} IS NULL)`,
+          sql`(${transactions.isInternal} = false OR ${transactions.isInternal} IS NULL)`
         )
       )
       .groupBy(sql`to_char(${transactions.date}::date, 'YYYY-MM')`)
@@ -51,7 +53,9 @@ export async function GET(request: NextRequest) {
       .where(
         and(
           eq(transactions.userId, session.userId),
-          gte(transactions.date, currentMonthStart)
+          gte(transactions.date, currentMonthStart),
+          sql`(${transactions.currency} = 'EUR' OR ${transactions.currency} IS NULL)`,
+          sql`(${transactions.isInternal} = false OR ${transactions.isInternal} IS NULL)`
         )
       );
 

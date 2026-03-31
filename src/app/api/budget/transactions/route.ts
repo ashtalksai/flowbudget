@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { transactions } from "@/db/schema";
 import { getSession } from "@/lib/auth";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, sql } from "drizzle-orm";
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,7 +14,13 @@ export async function GET(request: NextRequest) {
     const results = await db
       .select()
       .from(transactions)
-      .where(eq(transactions.userId, session.userId))
+      .where(
+        and(
+          eq(transactions.userId, session.userId),
+          sql`(${transactions.currency} = 'EUR' OR ${transactions.currency} IS NULL)`,
+          sql`(${transactions.isInternal} = false OR ${transactions.isInternal} IS NULL)`
+        )
+      )
       .orderBy(desc(transactions.date), desc(transactions.createdAt));
 
     return NextResponse.json({ transactions: results });

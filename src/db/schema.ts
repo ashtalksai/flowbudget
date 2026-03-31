@@ -60,8 +60,12 @@ export const transactions = pgTable("transactions", {
     .references(() => users.id)
     .notNull(),
   categoryId: integer("category_id").references(() => budgetCategories.id),
-  amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
-  description: varchar("description", { length: 200 }),
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+  description: varchar("description", { length: 500 }),
   date: date("date").notNull(),
+  account: varchar("account", { length: 30 }),
+  currency: varchar("currency", { length: 10 }).default("EUR"),
+  isInternal: boolean("is_internal").default(false),
+  rawAmount: numeric("raw_amount", { precision: 12, scale: 2 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
