@@ -1,147 +1,122 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useState } from "react";
-import { cn } from "@/lib/utils";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Button } from "@/components/ui/button";
+import { usePathname, useRouter } from "next/navigation";
 import {
-  LayoutDashboard,
-  Wallet,
-  CreditCard,
-  PieChart,
-  Settings,
-  Menu,
-  LogOut,
+  LayoutDashboard, Upload, CheckSquare, List, PieChart, TrendingUp,
+  CreditCard, Settings, LogOut, Menu
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/dashboard/income", label: "Income", icon: Wallet },
-  { href: "/dashboard/debts", label: "Debts", icon: CreditCard },
+  { href: "/dashboard/import", label: "Import", icon: Upload },
+  { href: "/dashboard/review", label: "Review", icon: CheckSquare },
+  { href: "/dashboard/transactions", label: "Transactions", icon: List },
   { href: "/dashboard/budget", label: "Budget", icon: PieChart },
+  { href: "/dashboard/income", label: "Income", icon: TrendingUp },
+  { href: "/dashboard/debts", label: "Debts", icon: CreditCard },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 
-function NavLink({
-  href,
-  label,
-  icon: Icon,
-  active,
-  onClick,
-}: {
-  href: string;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-  active: boolean;
-  onClick?: () => void;
-}) {
-  return (
-    <Link
-      href={href}
-      onClick={onClick}
-      className={cn(
-        "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-        active
-          ? "bg-teal-500/10 text-teal-600"
-          : "text-muted-foreground hover:bg-muted hover:text-foreground"
-      )}
-    >
-      <Icon className="h-4 w-4" />
-      {label}
-    </Link>
-  );
-}
-
-export default function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const [open, setOpen] = useState(false);
+  const router = useRouter();
+  const [user, setUser] = useState<any>(null);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
 
-  const isActive = (href: string) =>
-    href === "/dashboard" ? pathname === "/dashboard" : pathname.startsWith(href);
+  useEffect(() => {
+    fetch("/api/auth/me").then(r => r.json()).then(d => setUser(d.user)).catch(() => router.push("/login"));
+    fetch("/api/dashboard/stats").then(r => r.json()).then(d => setPendingCount(d.pendingReview)).catch(() => {});
+  }, []);
+
+  const handleLogout = async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/login");
+  };
+
+  const NavContent = () => (
+    <div className="flex flex-col h-full">
+      <div className="p-6">
+        <h1 className="text-xl font-bold text-teal-500">FlowBudget</h1>
+        <p className="text-xs text-muted-foreground mt-1">Personal Finance</p>
+      </div>
+      <ScrollArea className="flex-1 px-3">
+        <nav className="space-y-1">
+          {navItems.map((item) => {
+            const isActive = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={() => setMobileOpen(false)}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  isActive
+                    ? "bg-teal-50 text-teal-700 dark:bg-teal-950 dark:text-teal-300"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                }`}
+              >
+                <item.icon className="h-4 w-4" />
+                {item.label}
+                {item.label === "Review" && pendingCount > 0 && (
+                  <span className="ml-auto bg-coral text-white text-xs rounded-full px-2 py-0.5 font-bold">
+                    {pendingCount}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
+        </nav>
+      </ScrollArea>
+      <Separator />
+      <div className="p-4">
+        {user && (
+          <div className="flex items-center justify-between">
+            <div className="min-w-0">
+              <p className="text-sm font-medium truncate">{user.name || user.email}</p>
+              <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+            </div>
+            <Button variant="ghost" size="icon" onClick={handleLogout} title="Logout">
+              <LogOut className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 
   return (
-    <div className="flex min-h-screen bg-snow">
+    <div className="flex h-screen bg-background">
       {/* Desktop sidebar */}
-      <aside className="hidden w-64 border-r bg-white lg:block">
-        <div className="flex h-full flex-col">
-          <div className="flex h-16 items-center border-b px-6">
-            <Link href="/dashboard" className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-500 text-white font-bold text-sm">
-                FB
-              </div>
-              <span className="text-lg font-bold text-charcoal">
-                FlowBudget
-              </span>
-            </Link>
-          </div>
-          <nav className="flex-1 space-y-1 p-4">
-            {navItems.map((item) => (
-              <NavLink
-                key={item.href}
-                {...item}
-                active={isActive(item.href)}
-              />
-            ))}
-          </nav>
-          <div className="border-t p-4">
-            <button
-              onClick={async () => {
-                await fetch("/api/auth/logout", { method: "POST" });
-                window.location.href = "/login";
-              }}
-              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            >
-              <LogOut className="h-4 w-4" />
-              Sign Out
-            </button>
-          </div>
-        </div>
+      <aside className="hidden md:flex md:w-64 md:flex-col border-r bg-card">
+        <NavContent />
       </aside>
 
-      {/* Main content */}
-      <div className="flex flex-1 flex-col">
-        {/* Mobile header */}
-        <header className="flex h-16 items-center justify-between border-b bg-white px-4 lg:hidden">
-          <Link href="/dashboard" className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-500 text-white font-bold text-sm">
-              FB
-            </div>
-            <span className="text-lg font-bold text-charcoal">FlowBudget</span>
-          </Link>
-          <Sheet open={open} onOpenChange={setOpen}>
+      {/* Mobile header + sidebar */}
+      <div className="flex flex-col flex-1 min-w-0">
+        <header className="md:hidden flex items-center gap-3 p-4 border-b bg-card">
+          <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetTrigger asChild>
               <Button variant="ghost" size="icon">
                 <Menu className="h-5 w-5" />
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="w-64 p-0">
-              <div className="flex h-16 items-center border-b px-6">
-                <span className="text-lg font-bold text-charcoal">
-                  FlowBudget
-                </span>
-              </div>
-              <nav className="space-y-1 p-4">
-                {navItems.map((item) => (
-                  <NavLink
-                    key={item.href}
-                    {...item}
-                    active={isActive(item.href)}
-                    onClick={() => setOpen(false)}
-                  />
-                ))}
-              </nav>
+            <SheetContent side="left" className="p-0 w-64">
+              <NavContent />
             </SheetContent>
           </Sheet>
+          <h1 className="text-lg font-bold text-teal-500">FlowBudget</h1>
         </header>
 
-        <main className="flex-1 overflow-auto p-4 md:p-6 lg:p-8">
-          {children}
+        <main className="flex-1 overflow-auto">
+          <div className="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
+            {children}
+          </div>
         </main>
       </div>
     </div>

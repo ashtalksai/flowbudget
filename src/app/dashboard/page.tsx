@@ -2,350 +2,160 @@
 
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import { TrendingUp, TrendingDown, Wallet, Clock, HandCoins } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, Plus, Loader2, Coins } from "lucide-react";
-import Link from "next/link";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Legend,
-} from "recharts";
-
-interface Transaction {
-  id: number;
-  amount: string;
-  currency: string | null;
-  description: string | null;
-  date: string;
-  categoryId: number | null;
-}
-
-interface MonthlySummary {
-  month: string;
-  income: number;
-  expense: number;
-}
-
-interface SummaryData {
-  monthly: MonthlySummary[];
-  currentMonth: { income: number; expense: number };
-}
-
-interface CurrencyBreakdown {
-  currency: string;
-  totalSpent: number;
-  totalReceived: number;
-  count: number;
-}
-
-function stripSource(desc: string | null): string {
-  if (!desc) return "—";
-  return desc.replace(/^\[.*?\]\s*/, "");
-}
-
-function formatMonth(ym: string): string {
-  const [year, month] = ym.split("-");
-  const date = new Date(parseInt(year), parseInt(month) - 1);
-  return date.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
-}
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 
 export default function DashboardPage() {
-  const [summary, setSummary] = useState<SummaryData | null>(null);
-  const [recentTx, setRecentTx] = useState<Transaction[]>([]);
-  const [currencies, setCurrencies] = useState<CurrencyBreakdown[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<any>(null);
+  const [chartData, setChartData] = useState<any[]>([]);
 
   useEffect(() => {
-    async function load() {
-      try {
-        const [sumRes, txRes, curRes] = await Promise.all([
-          fetch("/api/budget/transactions/summary"),
-          fetch("/api/budget/transactions"),
-          fetch("/api/budget/transactions/currencies"),
-        ]);
-        if (sumRes.ok) {
-          const data = await sumRes.json();
-          setSummary(data);
-        }
-        if (txRes.ok) {
-          const data = await txRes.json();
-          setRecentTx((data.transactions || []).slice(0, 10));
-        }
-        if (curRes.ok) {
-          const data = await curRes.json();
-          setCurrencies(data.currencies || []);
-        }
-      } catch (e) {
-        console.error("Dashboard load error:", e);
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
+    fetch("/api/dashboard/stats").then(r => r.json()).then(setStats);
+    fetch("/api/transactions/summary").then(r => r.json()).then(d => setChartData(d.summary || []));
   }, []);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-teal-500" />
-      </div>
-    );
-  }
-
-  const monthlyIncome = summary?.currentMonth.income ?? 0;
-  const monthlyExpense = summary?.currentMonth.expense ?? 0;
-  const net = monthlyIncome - monthlyExpense;
-
-  const chartData = (summary?.monthly ?? []).map((m) => ({
-    month: formatMonth(m.month),
-    Income: m.income,
-    Expenses: m.expense,
-  }));
-
-  // Filter currencies with meaningful activity (more than 0 count)
-  const activeCurrencies = currencies.filter((c) => c.count > 0);
+  if (!stats) return <div className="flex items-center justify-center h-64"><div className="animate-pulse text-muted-foreground">Loading...</div></div>;
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-charcoal">Dashboard</h1>
-          <p className="text-sm text-muted-foreground">
-            Your financial overview at a glance
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Link href="/dashboard/income">
-            <Button size="sm" className="bg-teal-500 hover:bg-teal-600">
-              <Plus className="mr-1 h-4 w-4" /> Income
-            </Button>
-          </Link>
-          <Link href="/dashboard/budget">
-            <Button size="sm" variant="outline">
-              <Plus className="mr-1 h-4 w-4" /> Expense
-            </Button>
-          </Link>
-          <Link href="/dashboard/debts">
-            <Button size="sm" variant="outline">
-              <Plus className="mr-1 h-4 w-4" /> Debt
-            </Button>
-          </Link>
-        </div>
-      </div>
+      <h1 className="text-2xl font-bold">Dashboard</h1>
 
-      {/* Stats cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {/* Stat cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Income This Month</p>
-                <p className="mt-1 font-mono text-2xl font-bold text-charcoal">
-                  {formatCurrency(monthlyIncome)}
-                </p>
+                <p className="text-sm text-muted-foreground">Income</p>
+                <p className="text-2xl font-bold text-fresh">{formatCurrency(stats.income)}</p>
               </div>
-              <div className="rounded-full p-3 bg-teal-50">
-                <ArrowUpRight className="h-5 w-5 text-teal-600" />
-              </div>
+              <TrendingUp className="h-8 w-8 text-fresh-400 opacity-50" />
             </div>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Expenses This Month</p>
-                <p className="mt-1 font-mono text-2xl font-bold text-charcoal">
-                  {formatCurrency(monthlyExpense)}
-                </p>
+                <p className="text-sm text-muted-foreground">Expenses</p>
+                <p className="text-2xl font-bold text-red-500">{formatCurrency(stats.expenses)}</p>
               </div>
-              <div className="rounded-full p-3 bg-red-50">
-                <ArrowDownRight className="h-5 w-5 text-red-500" />
-              </div>
+              <TrendingDown className="h-8 w-8 text-red-400 opacity-50" />
             </div>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Net This Month</p>
-                <p className={`mt-1 font-mono text-2xl font-bold ${net >= 0 ? "text-teal-600" : "text-red-500"}`}>
-                  {net >= 0 ? "+" : ""}{formatCurrency(net)}
+                <p className="text-sm text-muted-foreground">Net</p>
+                <p className={`text-2xl font-bold ${stats.net >= 0 ? 'text-fresh' : 'text-red-500'}`}>
+                  {formatCurrency(stats.net)}
                 </p>
               </div>
-              <div className={`rounded-full p-3 ${net >= 0 ? "bg-teal-50" : "bg-red-50"}`}>
-                {net >= 0 ? (
-                  <TrendingUp className="h-5 w-5 text-teal-600" />
-                ) : (
-                  <TrendingDown className="h-5 w-5 text-red-500" />
-                )}
+              <Wallet className="h-8 w-8 text-teal-400 opacity-50" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card className={stats.pendingReview > 0 ? 'border-coral/50' : ''}>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Pending Review</p>
+                <p className="text-2xl font-bold">{stats.pendingReview}</p>
               </div>
+              <Clock className="h-8 w-8 text-coral-400 opacity-50" />
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Multi-currency breakdown */}
-      {activeCurrencies.length > 1 && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium flex items-center gap-2 text-muted-foreground">
-              <Coins className="h-4 w-4" />
-              Multi-Currency Breakdown
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="flex flex-wrap gap-3">
-              {activeCurrencies.map((c) => {
-                const spent = Math.abs(c.totalSpent);
-                const received = c.totalReceived;
-                return (
-                  <div
-                    key={c.currency}
-                    className="flex items-center gap-2 rounded-lg border px-3 py-2 bg-gray-50/50"
-                  >
-                    <Badge
-                      variant="secondary"
-                      className="text-[10px] px-1.5 py-0 font-mono text-gray-600 bg-gray-200/60"
-                    >
-                      {c.currency}
-                    </Badge>
-                    <div className="flex flex-col">
-                      {spent > 0 && (
-                        <span className="text-xs font-mono text-red-500">
-                          {formatCurrency(-spent, c.currency)} spent
-                        </span>
-                      )}
-                      {received > 0 && (
-                        <span className="text-xs font-mono text-teal-600">
-                          {formatCurrency(received, c.currency)} received
-                        </span>
-                      )}
-                    </div>
-                    <span className="text-[10px] text-gray-400 ml-1">
-                      {c.count} tx
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Income/Expense chart */}
+      {/* Cash flow chart */}
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Cash Flow — Last 12 Months</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="h-72">
-            {chartData.length === 0 ? (
-              <div className="flex items-center justify-center h-full text-muted-foreground">
-                No transaction data yet
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="month" tick={{ fontSize: 12 }} tickLine={false} />
-                  <YAxis
-                    tick={{ fontSize: 12 }}
-                    tickLine={false}
-                    axisLine={false}
-                    tickFormatter={(v) => `€${(v / 1000).toFixed(0)}k`}
-                  />
-                  <Tooltip
-                    formatter={(value, name) => [
-                      formatCurrency(Number(value)),
-                      String(name),
-                    ]}
-                    contentStyle={{
-                      borderRadius: "8px",
-                      border: "1px solid #e2e8f0",
-                      fontSize: "13px",
-                    }}
-                  />
-                  <Legend />
-                  <Bar dataKey="Income" fill="#22C55E" radius={[4, 4, 0, 0]} maxBarSize={32} />
-                  <Bar dataKey="Expenses" fill="#EF4444" radius={[4, 4, 0, 0]} maxBarSize={32} />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 12 }} />
+                <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                <Legend />
+                <Bar dataKey="income" fill="#22C55E" name="Income" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="expenses" fill="#EF4444" name="Expenses" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         </CardContent>
       </Card>
 
-      {/* Recent transactions */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-lg">Recent Transactions</CardTitle>
-          <Link href="/dashboard/budget">
-            <Button variant="ghost" size="sm" className="text-teal-600">
-              View All
-            </Button>
-          </Link>
-        </CardHeader>
-        <CardContent>
-          {recentTx.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-4 text-center">
-              No transactions yet
-            </p>
-          ) : (
-            <div className="space-y-3">
-              {recentTx.map((tx) => {
-                const amt = parseFloat(tx.amount);
-                const isPositive = amt >= 0;
-                const cur = tx.currency || "EUR";
-                const isNonEur = cur !== "EUR";
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Budget progress */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Budget Progress</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {stats.budgetProgress?.length > 0 ? (
+              stats.budgetProgress.map((b: any) => {
+                const pct = b.monthly_limit > 0 ? Math.round((parseFloat(b.spent) / parseFloat(b.monthly_limit)) * 100) : 0;
                 return (
-                  <div
-                    key={tx.id}
-                    className="flex items-center justify-between rounded-lg border p-3"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="flex flex-col">
-                        <span className="text-sm font-medium text-charcoal">
-                          {stripSource(tx.description)}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {formatDate(tx.date)}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <span
-                        className={`font-mono text-sm font-semibold ${
-                          isPositive ? "text-teal-600" : "text-red-500"
-                        }`}
-                      >
-                        {isPositive ? "+" : ""}
-                        {formatCurrency(amt, cur)}
+                  <div key={b.category} className="space-y-1">
+                    <div className="flex justify-between text-sm">
+                      <span className="font-medium">{b.category}</span>
+                      <span className="text-muted-foreground">
+                        {formatCurrency(b.spent)} / {formatCurrency(b.monthly_limit)}
                       </span>
-                      {isNonEur && (
-                        <Badge
-                          variant="secondary"
-                          className="text-[10px] px-1.5 py-0 font-normal text-gray-500 bg-gray-100"
-                        >
-                          {cur}
-                        </Badge>
-                      )}
                     </div>
+                    <Progress value={Math.min(pct, 100)} className="h-2"
+                      style={{ '--progress-color': pct > 80 ? '#EF4444' : pct > 50 ? '#EAB308' : '#22C55E' } as any} />
                   </div>
                 );
-              })}
+              })
+            ) : (
+              <p className="text-sm text-muted-foreground">No budgets set yet. Go to Budget page to set them.</p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Recent transactions + reimbursables */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-lg">Recent Transactions</CardTitle>
+            {stats.reimbursablesOutstanding > 0 && (
+              <div className="flex items-center gap-2 text-sm">
+                <HandCoins className="h-4 w-4 text-teal" />
+                <span className="text-muted-foreground">Owed to you:</span>
+                <span className="font-bold text-teal">{formatCurrency(stats.reimbursablesOutstanding)}</span>
+              </div>
+            )}
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {(stats.recentTransactions || []).map((t: any) => (
+                <div key={t.id} className="flex items-center justify-between py-2 border-b last:border-0">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium truncate">{t.description || 'No description'}</p>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span>{formatDate(t.date)}</span>
+                      {t.account_label && <Badge variant="outline" className="text-xs">{t.account_label}</Badge>}
+                    </div>
+                  </div>
+                  <span className={`text-sm font-mono font-medium ${parseFloat(t.amount) >= 0 ? 'text-fresh' : 'text-red-500'}`}>
+                    {formatCurrency(t.amount_base || t.amount, 'EUR')}
+                  </span>
+                </div>
+              ))}
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

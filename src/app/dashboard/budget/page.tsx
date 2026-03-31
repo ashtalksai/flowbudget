@@ -1,321 +1,195 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import { Card, CardContent } from "@/components/ui/card";
+import { useEffect, useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Progress } from "@/components/ui/progress";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ChevronLeft, ChevronRight, Plus, Loader2 } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { Search, Filter, Loader2, ArrowUpRight, ArrowDownRight } from "lucide-react";
-
-interface Transaction {
-  id: number;
-  amount: string;
-  currency: string | null;
-  amountEur: string | null;
-  description: string | null;
-  date: string;
-  categoryId: number | null;
-}
-
-function stripSource(desc: string | null): string {
-  if (!desc) return "—";
-  return desc.replace(/^\[.*?\]\s*/, "");
-}
-
-const PAGE_SIZE = 50;
 
 export default function BudgetPage() {
-  const [allTx, setAllTx] = useState<Transaction[]>([]);
+  const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [budgets, setBudgets] = useState<any[]>([]);
+  const [actuals, setActuals] = useState<any[]>([]);
+  const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState<"all" | "income" | "expense">("all");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
-  const [page, setPage] = useState(1);
+  const [showAdd, setShowAdd] = useState(false);
+  const [addCategory, setAddCategory] = useState("");
+  const [addLimit, setAddLimit] = useState("");
+  const [detailCategory, setDetailCategory] = useState<string | null>(null);
+  const [detailTxns, setDetailTxns] = useState<any[]>([]);
 
   useEffect(() => {
-    async function load() {
-      try {
-        const res = await fetch("/api/budget/transactions");
-        if (res.ok) {
-          const data = await res.json();
-          setAllTx(data.transactions || []);
-        }
-      } catch (e) {
-        console.error("Budget load error:", e);
-      } finally {
-        setLoading(false);
-      }
-    }
+    const load = async () => {
+      setLoading(true);
+      const [bRes, aRes, cRes] = await Promise.all([
+        fetch("/api/budgets").then(r => r.json()),
+        fetch(`/api/budgets/actuals?month=${month}`).then(r => r.json()),
+        fetch("/api/categories").then(r => r.json()),
+      ]);
+      setBudgets(bRes.budgets || []);
+      setActuals(aRes.actuals || []);
+      setCategories(cRes.categories || []);
+      setLoading(false);
+    };
     load();
-  }, []);
+  }, [month]);
 
-  const filtered = useMemo(() => {
-    let result = allTx;
-
-    if (search) {
-      const q = search.toLowerCase();
-      result = result.filter((tx) =>
-        stripSource(tx.description).toLowerCase().includes(q)
-      );
-    }
-
-    if (typeFilter === "income") {
-      result = result.filter((tx) => parseFloat(tx.amount) >= 0);
-    } else if (typeFilter === "expense") {
-      result = result.filter((tx) => parseFloat(tx.amount) < 0);
-    }
-
-    if (dateFrom) {
-      result = result.filter((tx) => tx.date >= dateFrom);
-    }
-    if (dateTo) {
-      result = result.filter((tx) => tx.date <= dateTo);
-    }
-
-    return result;
-  }, [allTx, search, typeFilter, dateFrom, dateTo]);
-
-  // Reset page when filters change
-  useEffect(() => {
-    setPage(1);
-  }, [search, typeFilter, dateFrom, dateTo]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-
-  // For summary cards, use amountEur if available, otherwise fall back to amount (EUR transactions)
-  const getEurAmount = (tx: Transaction) => {
-    if (tx.amountEur) return parseFloat(tx.amountEur);
-    if (!tx.currency || tx.currency === "EUR") return parseFloat(tx.amount);
-    return 0; // Non-EUR without amountEur — skip for EUR totals
+  const changeMonth = (delta: number) => {
+    const d = new Date(month + '-01');
+    d.setMonth(d.getMonth() + delta);
+    setMonth(d.toISOString().slice(0, 7));
   };
 
-  const totalIncome = filtered
-    .filter((tx) => getEurAmount(tx) >= 0)
-    .reduce((s, tx) => s + getEurAmount(tx), 0);
-  const totalExpense = filtered
-    .filter((tx) => getEurAmount(tx) < 0)
-    .reduce((s, tx) => s + Math.abs(getEurAmount(tx)), 0);
+  const monthLabel = new Date(month + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-teal-500" />
-      </div>
-    );
-  }
+  const saveBudget = async () => {
+    if (!addCategory || !addLimit) return;
+    await fetch("/api/budgets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ category: addCategory, monthlyLimit: parseFloat(addLimit) }),
+    });
+    setShowAdd(false);
+    setAddCategory("");
+    setAddLimit("");
+    // Reload
+    const bRes = await fetch("/api/budgets").then(r => r.json());
+    setBudgets(bRes.budgets || []);
+  };
+
+  const openDetail = async (category: string) => {
+    setDetailCategory(category);
+    const params = new URLSearchParams({
+      category, status: '', direction: 'expense',
+      dateFrom: month + '-01',
+      dateTo: new Date(new Date(month + '-01').setMonth(new Date(month + '-01').getMonth() + 1)).toISOString().slice(0, 10),
+      hideInternal: 'true',
+    });
+    const res = await fetch(`/api/transactions?${params}`).then(r => r.json());
+    setDetailTxns(res.transactions || []);
+  };
+
+  // Merge budgets with actuals
+  const allCategories = new Set([
+    ...budgets.map(b => b.category),
+    ...actuals.map(a => a.category),
+  ]);
+
+  const merged = Array.from(allCategories).map(cat => {
+    const budget = budgets.find(b => b.category === cat);
+    const actual = actuals.find(a => a.category === cat);
+    const spent = parseFloat(actual?.spent || '0');
+    const limit = parseFloat(budget?.monthlyLimit || '0');
+    const pct = limit > 0 ? Math.round((spent / limit) * 100) : 0;
+    return { category: cat, spent, limit, pct, color: budget?.color || '#6B7280', hasBudget: !!budget };
+  }).sort((a, b) => b.spent - a.spent);
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-charcoal">Transactions</h1>
-        <p className="text-sm text-muted-foreground">
-          {filtered.length.toLocaleString()} transaction{filtered.length !== 1 ? "s" : ""} found
-        </p>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Budget</h1>
+        <Button onClick={() => setShowAdd(true)} size="sm">
+          <Plus className="h-4 w-4 mr-1" /> Set Budget
+        </Button>
       </div>
 
-      {/* Summary cards — show EUR totals */}
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="rounded-full p-2 bg-teal-50">
-              <ArrowUpRight className="h-4 w-4 text-teal-600" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Total Income (EUR, filtered)</p>
-              <p className="font-mono text-lg font-bold text-teal-600">
-                +{formatCurrency(totalIncome, "EUR")}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="rounded-full p-2 bg-red-50">
-              <ArrowDownRight className="h-4 w-4 text-red-500" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Total Expenses (EUR, filtered)</p>
-              <p className="font-mono text-lg font-bold text-red-500">
-                -{formatCurrency(totalExpense, "EUR")}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Month selector */}
+      <div className="flex items-center justify-center gap-4">
+        <Button variant="ghost" size="icon" onClick={() => changeMonth(-1)}>
+          <ChevronLeft className="h-5 w-5" />
+        </Button>
+        <span className="text-lg font-semibold min-w-[180px] text-center">{monthLabel}</span>
+        <Button variant="ghost" size="icon" onClick={() => changeMonth(1)}>
+          <ChevronRight className="h-5 w-5" />
+        </Button>
       </div>
 
-      {/* Filters */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="space-y-1">
-              <Label className="text-xs flex items-center gap-1">
-                <Search className="h-3 w-3" /> Search
-              </Label>
-              <Input
-                placeholder="Search descriptions..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs flex items-center gap-1">
-                <Filter className="h-3 w-3" /> Type
-              </Label>
-              <Select
-                value={typeFilter}
-                onValueChange={(v) => setTypeFilter(v as "all" | "income" | "expense")}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="income">Income (+)</SelectItem>
-                  <SelectItem value="expense">Expenses (−)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">From</Label>
-              <Input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">To</Label>
-              <Input
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-              />
-            </div>
-          </div>
-          {(search || typeFilter !== "all" || dateFrom || dateTo) && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="mt-3 text-xs text-muted-foreground"
-              onClick={() => {
-                setSearch("");
-                setTypeFilter("all");
-                setDateFrom("");
-                setDateTo("");
-              }}
-            >
-              Clear filters
-            </Button>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Transactions table */}
-      <Card>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {paged.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={3} className="text-center py-8 text-muted-foreground">
-                      No transactions match your filters
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  paged.map((tx) => {
-                    const amt = parseFloat(tx.amount);
-                    const isPositive = amt >= 0;
-                    const cur = tx.currency || "EUR";
-                    const isNonEur = cur !== "EUR";
-                    return (
-                      <TableRow key={tx.id}>
-                        <TableCell className="text-sm whitespace-nowrap">
-                          {formatDate(tx.date)}
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          {stripSource(tx.description)}
-                        </TableCell>
-                        <TableCell className="text-right whitespace-nowrap">
-                          <span
-                            className={`font-mono font-semibold ${
-                              isPositive ? "text-teal-600" : "text-red-500"
-                            }`}
-                          >
-                            {isPositive ? "+" : ""}
-                            {formatCurrency(amt, cur)}
-                          </span>
-                          {isNonEur && (
-                            <Badge
-                              variant="secondary"
-                              className="ml-1.5 text-[10px] px-1.5 py-0 font-normal text-gray-500 bg-gray-100"
-                            >
-                              {cur}
-                            </Badge>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
+      {loading ? (
+        <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-teal" /></div>
+      ) : merged.length === 0 ? (
+        <Card>
+          <CardContent className="pt-12 pb-12 text-center">
+            <p className="text-muted-foreground">No spending data for this month.</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-3">
+          {merged.map(item => (
+            <Card key={item.category} className="cursor-pointer hover:shadow-md transition-shadow"
+              onClick={() => openDetail(item.category)}>
+              <CardContent className="pt-4 pb-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="font-medium">{item.category}</span>
+                  <div className="text-sm text-right">
+                    <span className="font-mono">{formatCurrency(item.spent)}</span>
+                    {item.hasBudget && (
+                      <span className="text-muted-foreground"> / {formatCurrency(item.limit)}</span>
+                    )}
+                    {!item.hasBudget && (
+                      <span className="text-xs text-muted-foreground ml-2">No budget</span>
+                    )}
+                  </div>
+                </div>
+                {item.hasBudget && (
+                  <Progress value={Math.min(item.pct, 100)} className="h-2"
+                    style={{ '--tw-bg-opacity': 1, background: `${item.pct > 80 ? '#FEE2E2' : item.pct > 50 ? '#FEF9C3' : '#DCFCE7'}` } as any} />
                 )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            Page {page} of {totalPages}
-          </p>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page <= 1}
-              onClick={() => setPage((p) => p - 1)}
-            >
-              Previous
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page >= totalPages}
-              onClick={() => setPage((p) => p + 1)}
-            >
-              Next
-            </Button>
-          </div>
+                {item.hasBudget && (
+                  <p className={`text-xs mt-1 ${item.pct > 80 ? 'text-red-500' : item.pct > 50 ? 'text-yellow-600' : 'text-fresh'}`}>
+                    {item.pct}% used
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          ))}
         </div>
       )}
+
+      {/* Add budget dialog */}
+      <Dialog open={showAdd} onOpenChange={setShowAdd}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Set Budget</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <select className="w-full border rounded-lg px-3 py-2 text-sm bg-background"
+              value={addCategory} onChange={e => setAddCategory(e.target.value)}>
+              <option value="">Select category...</option>
+              {categories.map((cat: any) => (
+                <option key={cat.id} value={cat.name}>{cat.name}</option>
+              ))}
+            </select>
+            <Input type="number" placeholder="Monthly limit (EUR)" value={addLimit}
+              onChange={e => setAddLimit(e.target.value)} />
+            <Button onClick={saveBudget} className="w-full bg-teal hover:bg-teal-600">Save Budget</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Detail dialog */}
+      <Dialog open={!!detailCategory} onOpenChange={() => setDetailCategory(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{detailCategory} — {monthLabel}</DialogTitle>
+          </DialogHeader>
+          <div className="max-h-80 overflow-y-auto space-y-2">
+            {detailTxns.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No transactions.</p>
+            ) : detailTxns.map(t => (
+              <div key={t.id} className="flex justify-between py-2 border-b last:border-0">
+                <div>
+                  <p className="text-sm truncate max-w-xs">{t.description}</p>
+                  <p className="text-xs text-muted-foreground">{formatDate(t.date)}</p>
+                </div>
+                <span className="text-sm font-mono text-red-500">{formatCurrency(t.amountBase || t.amount)}</span>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

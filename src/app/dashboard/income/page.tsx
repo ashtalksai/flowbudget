@@ -1,492 +1,121 @@
 "use client";
 
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { formatCurrency, formatDate } from "@/lib/format";
-import { Plus, Trash2, TrendingUp, DollarSign, Eye, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import { formatCurrency } from "@/lib/format";
+import { Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Line, ComposedChart } from "recharts";
 
-interface IncomeEntry {
-  id: number;
-  amount: string;
-  source: string;
-  date: string;
-  isRecurring: boolean;
-  frequency: string | null;
-}
-
-interface DetectedMonthly {
-  month: string;
-  totalAmount: string;
-  count: number;
-}
-
-interface DetectedTransaction {
-  id: number;
-  amount: string;
-  amountEur: string | null;
-  currency: string | null;
-  description: string | null;
-  date: string;
-  account: string | null;
-}
+const COLORS = ['#0D9488', '#22C55E', '#3B82F6', '#F97316', '#8B5CF6', '#EC4899', '#EAB308', '#EF4444'];
 
 export default function IncomePage() {
-  const [entries, setEntries] = useState<IncomeEntry[]>([]);
-  const [detectedMonthly, setDetectedMonthly] = useState<DetectedMonthly[]>([]);
-  const [detectedTransactions, setDetectedTransactions] = useState<DetectedTransaction[]>([]);
+  const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [view, setView] = useState<"all" | "monthly" | "weekly">("all");
-  const [submitting, setSubmitting] = useState(false);
-
-  // Form state
-  const [amount, setAmount] = useState("");
-  const [source, setSource] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
-  const [isRecurring, setIsRecurring] = useState(false);
-  const [frequency, setFrequency] = useState("monthly");
-
-  const fetchData = useCallback(async () => {
-    try {
-      const [incomeRes, detectedRes] = await Promise.all([
-        fetch("/api/income"),
-        fetch("/api/income/detected"),
-      ]);
-      if (incomeRes.ok) {
-        const data = await incomeRes.json();
-        setEntries(data.entries || []);
-      }
-      if (detectedRes.ok) {
-        const data = await detectedRes.json();
-        setDetectedMonthly(data.monthly || []);
-        setDetectedTransactions(data.transactions || []);
-      }
-    } catch (err) {
-      console.error("Failed to fetch income data:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const [excludedCategories, setExcludedCategories] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    fetch("/api/income/summary").then(r => r.json()).then(d => { setData(d); setLoading(false); });
+  }, []);
 
-  const filteredEntries = useMemo(() => {
-    const sorted = [...entries].sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-    );
-    if (view === "monthly") {
-      const thisMonth = new Date().toISOString().slice(0, 7);
-      return sorted.filter((e) => e.date.startsWith(thisMonth));
-    }
-    if (view === "weekly") {
-      const weekAgo = new Date();
-      weekAgo.setDate(weekAgo.getDate() - 7);
-      return sorted.filter((e) => new Date(e.date) >= weekAgo);
-    }
-    return sorted;
-  }, [entries, view]);
+  if (loading) return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-teal" /></div>;
 
-  const totalIncome = filteredEntries.reduce((s, e) => s + Number(e.amount), 0);
+  const { byCategory, monthlyTotals, smoothedAverage } = data || {};
 
-  // 6-month smoothed average from real data
-  const smoothedAvg = useMemo(() => {
-    const monthTotals: Record<string, number> = {};
-    for (const e of entries) {
-      const key = e.date.slice(0, 7);
-      monthTotals[key] = (monthTotals[key] || 0) + Number(e.amount);
-    }
-    const sortedMonths = Object.keys(monthTotals).sort().slice(-6);
-    if (sortedMonths.length === 0) return 0;
-    const sum = sortedMonths.reduce((s, m) => s + monthTotals[m], 0);
-    return Math.round(sum / sortedMonths.length);
-  }, [entries]);
+  // Get unique categories from income
+  const allCategories = Array.from(new Set((byCategory || []).map((r: any) => r.category || 'Uncategorized')));
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setSubmitting(true);
-    try {
-      const res = await fetch("/api/income", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          amount: parseFloat(amount),
-          source,
-          date,
-          isRecurring,
-          frequency: isRecurring ? frequency : null,
-        }),
-      });
-      if (res.ok) {
-        setDialogOpen(false);
-        setAmount("");
-        setSource("");
-        setDate(new Date().toISOString().split("T")[0]);
-        setIsRecurring(false);
-        await fetchData();
+  // Build chart data: each month has bars per category + smoothed line
+  const months = (monthlyTotals || []).map((mt: any) => mt.month);
+  const chartData = months.map((m: string) => {
+    const point: any = { month: m };
+    allCategories.forEach(cat => {
+      if (!excludedCategories.has(cat as string)) {
+        const match = (byCategory || []).find((r: any) => r.month === m && (r.category || 'Uncategorized') === cat);
+        point[cat as string] = match ? parseFloat(match.total) : 0;
       }
-    } catch (err) {
-      console.error("Failed to add income:", err);
-    } finally {
-      setSubmitting(false);
-    }
-  }
+    });
+    const avg = (smoothedAverage || []).find((s: any) => s.month === m);
+    point.average = avg ? avg.average : 0;
+    return point;
+  });
 
-  async function handleDelete(id: number) {
-    try {
-      const res = await fetch(`/api/income/${id}`, { method: "DELETE" });
-      if (res.ok) {
-        await fetchData();
-      }
-    } catch (err) {
-      console.error("Failed to delete income:", err);
-    }
-  }
+  // Category totals for the summary table
+  const categoryTotals = allCategories.map(cat => {
+    const total = (byCategory || [])
+      .filter((r: any) => (r.category || 'Uncategorized') === cat)
+      .reduce((s: number, r: any) => s + parseFloat(r.total), 0);
+    return { category: cat, total };
+  }).sort((a, b) => b.total - a.total);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-teal-500" />
-      </div>
-    );
-  }
+  const toggleCategory = (cat: string) => {
+    setExcludedCategories(prev => {
+      const next = new Set(prev);
+      if (next.has(cat)) next.delete(cat); else next.add(cat);
+      return next;
+    });
+  };
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-charcoal">Income Tracker</h1>
-          <p className="text-sm text-muted-foreground">
-            Track your freelance income and see your smoothed average
-          </p>
-        </div>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="bg-teal-500 hover:bg-teal-600">
-              <Plus className="mr-1 h-4 w-4" /> Add Income
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add Income Entry</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="amount">Amount (EUR)</Label>
-                <Input
-                  id="amount"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  required
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  placeholder="0.00"
-                  className="font-mono"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="source">Source</Label>
-                <Input
-                  id="source"
-                  required
-                  value={source}
-                  onChange={(e) => setSource(e.target.value)}
-                  placeholder="e.g. Web Dev Project"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="date">Date</Label>
-                <Input
-                  id="date"
-                  type="date"
-                  required
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="recurring"
-                  checked={isRecurring}
-                  onChange={(e) => setIsRecurring(e.target.checked)}
-                  className="h-4 w-4 rounded border-gray-300"
-                />
-                <Label htmlFor="recurring" className="text-sm">
-                  Recurring income
-                </Label>
-              </div>
-              {isRecurring && (
-                <div className="space-y-2">
-                  <Label>Frequency</Label>
-                  <Select value={frequency} onValueChange={setFrequency}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="weekly">Weekly</SelectItem>
-                      <SelectItem value="monthly">Monthly</SelectItem>
-                      <SelectItem value="quarterly">Quarterly</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-              <Button
-                type="submit"
-                className="w-full bg-teal-500 hover:bg-teal-600"
-                disabled={submitting}
-              >
-                {submitting ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : null}
-                Add Income
-              </Button>
-            </form>
-          </DialogContent>
-        </Dialog>
-      </div>
+      <h1 className="text-2xl font-bold">Income</h1>
 
-      {/* Summary cards */}
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Card>
-          <CardContent className="flex items-center gap-4 p-6">
-            <div className="rounded-full bg-fresh-50 p-3">
-              <DollarSign className="h-5 w-5 text-fresh-600" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">
-                {view === "all"
-                  ? "Total"
-                  : view === "monthly"
-                    ? "This Month"
-                    : "This Week"}{" "}
-                Income
-              </p>
-              <p className="font-mono text-2xl font-bold text-charcoal">
-                {formatCurrency(totalIncome)}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center gap-4 p-6">
-            <div className="rounded-full bg-teal-50 p-3">
-              <TrendingUp className="h-5 w-5 text-teal-600" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">
-                6-Month Smoothed Average
-              </p>
-              <p className="font-mono text-2xl font-bold text-charcoal">
-                {formatCurrency(smoothedAvg)}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* View toggle + table */}
+      {/* Chart */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-lg">Income History</CardTitle>
-          <Tabs
-            value={view}
-            onValueChange={(v) => setView(v as typeof view)}
-          >
-            <TabsList>
-              <TabsTrigger value="all">All</TabsTrigger>
-              <TabsTrigger value="monthly">Monthly</TabsTrigger>
-              <TabsTrigger value="weekly">Weekly</TabsTrigger>
-            </TabsList>
-          </Tabs>
+        <CardHeader>
+          <CardTitle className="text-lg">Monthly Income</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Source</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredEntries.map((entry) => (
-                  <TableRow key={entry.id}>
-                    <TableCell className="text-sm">
-                      {formatDate(entry.date)}
-                    </TableCell>
-                    <TableCell className="font-medium">
-                      {entry.source}
-                    </TableCell>
-                    <TableCell className="text-right font-mono font-semibold text-fresh-600">
-                      {formatCurrency(Number(entry.amount))}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={entry.isRecurring ? "default" : "secondary"}
-                        className={
-                          entry.isRecurring
-                            ? "bg-teal-100 text-teal-700 hover:bg-teal-100"
-                            : ""
-                        }
-                      >
-                        {entry.isRecurring
-                          ? `Recurring (${entry.frequency})`
-                          : "One-time"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDelete(entry.id)}
-                        className="text-muted-foreground hover:text-red-500"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
+          <div className="h-80">
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} />
+                <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                <Legend />
+                {allCategories.filter(c => !excludedCategories.has(c as string)).map((cat, i) => (
+                  <Bar key={cat as string} dataKey={cat as string} stackId="a" fill={COLORS[i % COLORS.length]} />
                 ))}
-                {filteredEntries.length === 0 && (
-                  <TableRow>
-                    <TableCell
-                      colSpan={5}
-                      className="text-center text-muted-foreground py-8"
-                    >
-                      No income entries yet — add your first one above
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
+                <Line type="monotone" dataKey="average" stroke="#F97316" strokeWidth={2} dot={false} name="6-mo Average" />
+              </ComposedChart>
+            </ResponsiveContainer>
           </div>
         </CardContent>
       </Card>
 
-      {/* Detected Income Section */}
+      {/* Category toggles + table */}
       <Card>
         <CardHeader>
-          <div className="flex items-center gap-2">
-            <Eye className="h-5 w-5 text-teal-500" />
-            <CardTitle className="text-lg">Detected Income</CardTitle>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Positive incoming transactions from your bank accounts (read-only)
-          </p>
+          <CardTitle className="text-lg">Income by Category</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          {detectedMonthly.length === 0 ? (
-            <p className="text-center text-muted-foreground py-6">
-              No incoming transactions detected yet
-            </p>
-          ) : (
-            <>
-              {/* Monthly summary */}
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {detectedMonthly.slice(0, 6).map((m) => {
-                  const monthDate = new Date(m.month + "-01");
-                  const label = monthDate.toLocaleDateString("en-US", {
-                    month: "long",
-                    year: "numeric",
-                  });
-                  return (
-                    <div
-                      key={m.month}
-                      className="rounded-lg border bg-gradient-to-br from-teal-50 to-white p-4"
-                    >
-                      <p className="text-xs font-medium text-muted-foreground">
-                        {label}
-                      </p>
-                      <p className="font-mono text-xl font-bold text-charcoal">
-                        {formatCurrency(Number(m.totalAmount))}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {m.count} transaction{m.count !== 1 ? "s" : ""}
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Recent detected transactions */}
-              {detectedTransactions.length > 0 && (
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Description</TableHead>
-                        <TableHead>Account</TableHead>
-                        <TableHead className="text-right">Amount</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {detectedTransactions.slice(0, 20).map((tx) => (
-                        <TableRow key={tx.id}>
-                          <TableCell className="text-sm">
-                            {formatDate(tx.date)}
-                          </TableCell>
-                          <TableCell className="font-medium max-w-[200px] truncate">
-                            {tx.description || "—"}
-                          </TableCell>
-                          <TableCell className="text-sm text-muted-foreground">
-                            {tx.account || "—"}
-                          </TableCell>
-                          <TableCell className="text-right font-mono font-semibold text-fresh-600">
-                            {formatCurrency(
-                              Number(tx.amountEur || tx.amount)
-                            )}
-                            {tx.currency && tx.currency !== "EUR" && (
-                              <span className="ml-1 text-xs text-muted-foreground">
-                                ({formatCurrency(Number(tx.amount), tx.currency)})
-                              </span>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                  {detectedTransactions.length > 20 && (
-                    <p className="text-center text-xs text-muted-foreground py-2">
-                      Showing 20 of {detectedTransactions.length} transactions
-                    </p>
-                  )}
+        <CardContent>
+          <div className="flex flex-wrap gap-2 mb-4">
+            {allCategories.map((cat, i) => (
+              <button
+                key={cat as string}
+                onClick={() => toggleCategory(cat as string)}
+                className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                  excludedCategories.has(cat as string)
+                    ? 'bg-muted text-muted-foreground border-muted'
+                    : 'text-white border-transparent'
+                }`}
+                style={!excludedCategories.has(cat as string) ? { backgroundColor: COLORS[i % COLORS.length] } : {}}
+              >
+                {cat as string}
+              </button>
+            ))}
+          </div>
+          <div className="space-y-2">
+            {categoryTotals.map((ct, i) => (
+              <div key={ct.category as string} className="flex items-center justify-between py-2 border-b last:border-0">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
+                  <span className="text-sm font-medium">{ct.category as string}</span>
                 </div>
-              )}
-            </>
-          )}
+                <span className="text-sm font-mono text-fresh">{formatCurrency(ct.total)}</span>
+              </div>
+            ))}
+          </div>
         </CardContent>
       </Card>
     </div>
