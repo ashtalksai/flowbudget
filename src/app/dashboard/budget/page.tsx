@@ -1,18 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useEffect, useState, useMemo } from "react";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Progress } from "@/components/ui/progress";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -28,382 +20,280 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  mockCategories,
-  mockTransactions,
-  type MockCategory,
-  type MockTransaction,
-} from "@/lib/mock-data";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { Plus, PieChart as PieChartIcon } from "lucide-react";
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
+import { Search, Filter, Loader2, ArrowUpRight, ArrowDownRight } from "lucide-react";
 
-const PRESET_COLORS = [
-  "#0D9488",
-  "#F97316",
-  "#22C55E",
-  "#8B5CF6",
-  "#EC4899",
-  "#3B82F6",
-  "#EAB308",
-  "#EF4444",
-];
+interface Transaction {
+  id: number;
+  amount: string;
+  description: string | null;
+  date: string;
+  categoryId: number | null;
+}
+
+function stripSource(desc: string | null): string {
+  if (!desc) return "—";
+  return desc.replace(/^\[.*?\]\s*/, "");
+}
+
+const PAGE_SIZE = 50;
 
 export default function BudgetPage() {
-  const [categories, setCategories] = useState<MockCategory[]>(mockCategories);
-  const [transactions, setTransactions] = useState<MockTransaction[]>(mockTransactions);
-  const [catDialogOpen, setCatDialogOpen] = useState(false);
-  const [expDialogOpen, setExpDialogOpen] = useState(false);
+  const [allTx, setAllTx] = useState<Transaction[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState<"all" | "income" | "expense">("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [page, setPage] = useState(1);
 
-  // Category form
-  const [catName, setCatName] = useState("");
-  const [catLimit, setCatLimit] = useState("");
-  const [catColor, setCatColor] = useState(PRESET_COLORS[0]);
+  useEffect(() => {
+    async function load() {
+      try {
+        const res = await fetch("/api/budget/transactions");
+        if (res.ok) {
+          const data = await res.json();
+          setAllTx(data.transactions || []);
+        }
+      } catch (e) {
+        console.error("Budget load error:", e);
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, []);
 
-  // Expense form
-  const [expAmount, setExpAmount] = useState("");
-  const [expDesc, setExpDesc] = useState("");
-  const [expCatId, setExpCatId] = useState("");
-  const [expDate, setExpDate] = useState(new Date().toISOString().split("T")[0]);
+  const filtered = useMemo(() => {
+    let result = allTx;
 
-  const totalSpent = categories.reduce((s, c) => s + c.spent, 0);
-  const totalBudget = categories.reduce((s, c) => s + c.monthlyLimit, 0);
+    if (search) {
+      const q = search.toLowerCase();
+      result = result.filter((tx) =>
+        stripSource(tx.description).toLowerCase().includes(q)
+      );
+    }
 
-  const pieData = categories.map((c) => ({
-    name: c.name,
-    value: c.spent,
-    color: c.color,
-  }));
+    if (typeFilter === "income") {
+      result = result.filter((tx) => parseFloat(tx.amount) >= 0);
+    } else if (typeFilter === "expense") {
+      result = result.filter((tx) => parseFloat(tx.amount) < 0);
+    }
 
-  function handleAddCategory(e: React.FormEvent) {
-    e.preventDefault();
-    const newCat: MockCategory = {
-      id: Date.now(),
-      name: catName,
-      monthlyLimit: parseFloat(catLimit),
-      color: catColor,
-      spent: 0,
-    };
-    setCategories((prev) => [...prev, newCat]);
-    setCatDialogOpen(false);
-    setCatName("");
-    setCatLimit("");
-  }
+    if (dateFrom) {
+      result = result.filter((tx) => tx.date >= dateFrom);
+    }
+    if (dateTo) {
+      result = result.filter((tx) => tx.date <= dateTo);
+    }
 
-  function handleAddExpense(e: React.FormEvent) {
-    e.preventDefault();
-    const cat = categories.find((c) => c.id === parseInt(expCatId));
-    if (!cat) return;
-    const newTx: MockTransaction = {
-      id: Date.now(),
-      categoryId: cat.id,
-      categoryName: cat.name,
-      amount: parseFloat(expAmount),
-      description: expDesc,
-      date: expDate,
-    };
-    setTransactions((prev) => [newTx, ...prev]);
-    setCategories((prev) =>
-      prev.map((c) =>
-        c.id === cat.id ? { ...c, spent: c.spent + parseFloat(expAmount) } : c
-      )
+    return result;
+  }, [allTx, search, typeFilter, dateFrom, dateTo]);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [search, typeFilter, dateFrom, dateTo]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  const totalIncome = filtered
+    .filter((tx) => parseFloat(tx.amount) >= 0)
+    .reduce((s, tx) => s + parseFloat(tx.amount), 0);
+  const totalExpense = filtered
+    .filter((tx) => parseFloat(tx.amount) < 0)
+    .reduce((s, tx) => s + Math.abs(parseFloat(tx.amount)), 0);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-8 w-8 animate-spin text-teal-500" />
+      </div>
     );
-    setExpDialogOpen(false);
-    setExpAmount("");
-    setExpDesc("");
-    setExpCatId("");
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-charcoal">Budget</h1>
-          <p className="text-sm text-muted-foreground">
-            Track spending by category
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Dialog open={catDialogOpen} onOpenChange={setCatDialogOpen}>
-            <DialogTrigger asChild>
-              <Button variant="outline">
-                <Plus className="mr-1 h-4 w-4" /> Category
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Add Category</DialogTitle>
-              </DialogHeader>
-              <form onSubmit={handleAddCategory} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="catName">Name</Label>
-                  <Input
-                    id="catName"
-                    required
-                    value={catName}
-                    onChange={(e) => setCatName(e.target.value)}
-                    placeholder="e.g. Entertainment"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="catLimit">Monthly Limit (EUR)</Label>
-                  <Input
-                    id="catLimit"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    required
-                    value={catLimit}
-                    onChange={(e) => setCatLimit(e.target.value)}
-                    className="font-mono"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Color</Label>
-                  <div className="flex gap-2 flex-wrap">
-                    {PRESET_COLORS.map((color) => (
-                      <button
-                        key={color}
-                        type="button"
-                        onClick={() => setCatColor(color)}
-                        className="h-8 w-8 rounded-full border-2 transition-transform"
-                        style={{
-                          backgroundColor: color,
-                          borderColor: catColor === color ? "#1E293B" : "transparent",
-                          transform: catColor === color ? "scale(1.15)" : "scale(1)",
-                        }}
-                      />
-                    ))}
-                  </div>
-                </div>
-                <Button type="submit" className="w-full bg-teal-500 hover:bg-teal-600">
-                  Add Category
-                </Button>
-              </form>
-            </DialogContent>
-          </Dialog>
-          <Dialog open={expDialogOpen} onOpenChange={setExpDialogOpen}>
-            <DialogTrigger asChild>
-              <Button className="bg-coral hover:bg-coral-600">
-                <Plus className="mr-1 h-4 w-4" /> Expense
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Add Expense</DialogTitle>
-              </DialogHeader>
-              <form onSubmit={handleAddExpense} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="expAmount">Amount (EUR)</Label>
-                  <Input
-                    id="expAmount"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    required
-                    value={expAmount}
-                    onChange={(e) => setExpAmount(e.target.value)}
-                    className="font-mono"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="expDesc">Description</Label>
-                  <Input
-                    id="expDesc"
-                    required
-                    value={expDesc}
-                    onChange={(e) => setExpDesc(e.target.value)}
-                    placeholder="e.g. Grocery shopping"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Category</Label>
-                  <Select value={expCatId} onValueChange={setExpCatId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {categories.map((c) => (
-                        <SelectItem key={c.id} value={c.id.toString()}>
-                          {c.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="expDate">Date</Label>
-                  <Input
-                    id="expDate"
-                    type="date"
-                    required
-                    value={expDate}
-                    onChange={(e) => setExpDate(e.target.value)}
-                  />
-                </div>
-                <Button type="submit" className="w-full bg-coral hover:bg-coral-600">
-                  Add Expense
-                </Button>
-              </form>
-            </DialogContent>
-          </Dialog>
-        </div>
+      <div>
+        <h1 className="text-2xl font-bold text-charcoal">Transactions</h1>
+        <p className="text-sm text-muted-foreground">
+          {filtered.length.toLocaleString()} transaction{filtered.length !== 1 ? "s" : ""} found
+        </p>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* Pie chart */}
-        <Card className="lg:col-span-1">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <PieChartIcon className="h-4 w-4 text-teal-500" />
-              Monthly Spending
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={pieData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={50}
-                    outerRadius={90}
-                    paddingAngle={3}
-                    dataKey="value"
-                  >
-                    {pieData.map((entry, i) => (
-                      <Cell key={i} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    formatter={(value) => formatCurrency(Number(value))}
-                    contentStyle={{
-                      borderRadius: "8px",
-                      border: "1px solid #e2e8f0",
-                      fontSize: "13px",
-                    }}
-                  />
-                  <Legend
-                    formatter={(value) => (
-                      <span className="text-xs text-charcoal">{value}</span>
-                    )}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
+      {/* Summary cards */}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Card>
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="rounded-full p-2 bg-teal-50">
+              <ArrowUpRight className="h-4 w-4 text-teal-600" />
             </div>
-            <div className="mt-4 text-center">
-              <p className="text-sm text-muted-foreground">Total Spent</p>
-              <p className="font-mono text-2xl font-bold text-charcoal">
-                {formatCurrency(totalSpent)}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                of {formatCurrency(totalBudget)} budget
+            <div>
+              <p className="text-xs text-muted-foreground">Total Income (filtered)</p>
+              <p className="font-mono text-lg font-bold text-teal-600">
+                +{formatCurrency(totalIncome)}
               </p>
             </div>
           </CardContent>
         </Card>
-
-        {/* Category cards */}
-        <div className="lg:col-span-2 space-y-3">
-          {categories.map((cat) => {
-            const pct = Math.min(100, (cat.spent / cat.monthlyLimit) * 100);
-            const isOver = cat.spent > cat.monthlyLimit;
-            return (
-              <Card key={cat.id}>
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <div
-                        className="h-3 w-3 rounded-full"
-                        style={{ backgroundColor: cat.color }}
-                      />
-                      <span className="text-sm font-medium text-charcoal">
-                        {cat.name}
-                      </span>
-                    </div>
-                    <div className="text-right">
-                      <span className={`font-mono text-sm font-semibold ${isOver ? "text-red-500" : "text-charcoal"}`}>
-                        {formatCurrency(cat.spent)}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {" / "}
-                        {formatCurrency(cat.monthlyLimit)}
-                      </span>
-                    </div>
-                  </div>
-                  <Progress
-                    value={pct}
-                    className="h-2"
-                    style={
-                      {
-                        "--progress-color": isOver ? "#EF4444" : cat.color,
-                      } as React.CSSProperties
-                    }
-                  />
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+        <Card>
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="rounded-full p-2 bg-red-50">
+              <ArrowDownRight className="h-4 w-4 text-red-500" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Total Expenses (filtered)</p>
+              <p className="font-mono text-lg font-bold text-red-500">
+                -{formatCurrency(totalExpense)}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
+
+      {/* Filters */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="space-y-1">
+              <Label className="text-xs flex items-center gap-1">
+                <Search className="h-3 w-3" /> Search
+              </Label>
+              <Input
+                placeholder="Search descriptions..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs flex items-center gap-1">
+                <Filter className="h-3 w-3" /> Type
+              </Label>
+              <Select
+                value={typeFilter}
+                onValueChange={(v) => setTypeFilter(v as "all" | "income" | "expense")}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="income">Income (+)</SelectItem>
+                  <SelectItem value="expense">Expenses (−)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">From</Label>
+              <Input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">To</Label>
+              <Input
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+              />
+            </div>
+          </div>
+          {(search || typeFilter !== "all" || dateFrom || dateTo) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="mt-3 text-xs text-muted-foreground"
+              onClick={() => {
+                setSearch("");
+                setTypeFilter("all");
+                setDateFrom("");
+                setDateTo("");
+              }}
+            >
+              Clear filters
+            </Button>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Transactions table */}
       <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Recent Expenses</CardTitle>
-        </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Date</TableHead>
                   <TableHead>Description</TableHead>
-                  <TableHead>Category</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {transactions
-                  .sort(
-                    (a, b) =>
-                      new Date(b.date).getTime() - new Date(a.date).getTime()
-                  )
-                  .slice(0, 15)
-                  .map((tx) => (
-                    <TableRow key={tx.id}>
-                      <TableCell className="text-sm">
-                        {formatDate(tx.date)}
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        {tx.description}
-                      </TableCell>
-                      <TableCell>
-                        <span
-                          className="inline-flex items-center gap-1.5 text-sm"
+                {paged.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={3} className="text-center py-8 text-muted-foreground">
+                      No transactions match your filters
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  paged.map((tx) => {
+                    const amt = parseFloat(tx.amount);
+                    const isPositive = amt >= 0;
+                    return (
+                      <TableRow key={tx.id}>
+                        <TableCell className="text-sm whitespace-nowrap">
+                          {formatDate(tx.date)}
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {stripSource(tx.description)}
+                        </TableCell>
+                        <TableCell
+                          className={`text-right font-mono font-semibold whitespace-nowrap ${
+                            isPositive ? "text-teal-600" : "text-red-500"
+                          }`}
                         >
-                          <span
-                            className="h-2 w-2 rounded-full"
-                            style={{
-                              backgroundColor:
-                                categories.find((c) => c.id === tx.categoryId)
-                                  ?.color || "#94a3b8",
-                            }}
-                          />
-                          {tx.categoryName}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-right font-mono font-semibold text-charcoal">
-                        -{formatCurrency(tx.amount)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                          {isPositive ? "+" : ""}
+                          {formatCurrency(amt)}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
               </TableBody>
             </Table>
           </div>
         </CardContent>
       </Card>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">
+            Page {page} of {totalPages}
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => p - 1)}
+            >
+              Previous
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
