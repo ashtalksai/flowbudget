@@ -11,23 +11,24 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Last 12 months of monthly income/expense totals
     const twelveMonthsAgo = new Date();
     twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
     const cutoff = twelveMonthsAgo.toISOString().split("T")[0];
 
+    // Use amount_eur for normalized values, fallback to amount
+    const amtExpr = sql`coalesce(amount_eur, amount::numeric)`;
+
     const rows = await db
       .select({
         month: sql<string>`to_char(${transactions.date}::date, 'YYYY-MM')`,
-        income: sql<string>`coalesce(sum(case when ${transactions.amount}::numeric >= 0 then ${transactions.amount}::numeric else 0 end), 0)`,
-        expense: sql<string>`coalesce(sum(case when ${transactions.amount}::numeric < 0 then abs(${transactions.amount}::numeric) else 0 end), 0)`,
+        income: sql<string>`coalesce(sum(case when coalesce(amount_eur, amount::numeric) >= 0 then coalesce(amount_eur, amount::numeric) else 0 end), 0)`,
+        expense: sql<string>`coalesce(sum(case when coalesce(amount_eur, amount::numeric) < 0 then abs(coalesce(amount_eur, amount::numeric)) else 0 end), 0)`,
       })
       .from(transactions)
       .where(
         and(
           eq(transactions.userId, session.userId),
           gte(transactions.date, cutoff),
-          sql`(${transactions.currency} = 'EUR' OR ${transactions.currency} IS NULL)`,
           sql`(${transactions.isInternal} = false OR ${transactions.isInternal} IS NULL)`
         )
       )
@@ -40,21 +41,19 @@ export async function GET(request: NextRequest) {
       expense: parseFloat(r.expense),
     }));
 
-    // Current month totals
     const now = new Date();
     const currentMonthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
 
     const [currentMonth] = await db
       .select({
-        income: sql<string>`coalesce(sum(case when ${transactions.amount}::numeric >= 0 then ${transactions.amount}::numeric else 0 end), 0)`,
-        expense: sql<string>`coalesce(sum(case when ${transactions.amount}::numeric < 0 then abs(${transactions.amount}::numeric) else 0 end), 0)`,
+        income: sql<string>`coalesce(sum(case when coalesce(amount_eur, amount::numeric) >= 0 then coalesce(amount_eur, amount::numeric) else 0 end), 0)`,
+        expense: sql<string>`coalesce(sum(case when coalesce(amount_eur, amount::numeric) < 0 then abs(coalesce(amount_eur, amount::numeric)) else 0 end), 0)`,
       })
       .from(transactions)
       .where(
         and(
           eq(transactions.userId, session.userId),
           gte(transactions.date, currentMonthStart),
-          sql`(${transactions.currency} = 'EUR' OR ${transactions.currency} IS NULL)`,
           sql`(${transactions.isInternal} = false OR ${transactions.isInternal} IS NULL)`
         )
       );
@@ -68,9 +67,6 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error("GET /api/budget/transactions/summary error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
