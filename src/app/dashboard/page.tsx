@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, Plus, Loader2 } from "lucide-react";
+import { TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, Plus, Loader2, Coins } from "lucide-react";
 import Link from "next/link";
 import {
   BarChart,
@@ -20,6 +21,7 @@ import {
 interface Transaction {
   id: number;
   amount: string;
+  currency: string | null;
   description: string | null;
   date: string;
   categoryId: number | null;
@@ -36,6 +38,13 @@ interface SummaryData {
   currentMonth: { income: number; expense: number };
 }
 
+interface CurrencyBreakdown {
+  currency: string;
+  totalSpent: number;
+  totalReceived: number;
+  count: number;
+}
+
 function stripSource(desc: string | null): string {
   if (!desc) return "—";
   return desc.replace(/^\[.*?\]\s*/, "");
@@ -50,14 +59,16 @@ function formatMonth(ym: string): string {
 export default function DashboardPage() {
   const [summary, setSummary] = useState<SummaryData | null>(null);
   const [recentTx, setRecentTx] = useState<Transaction[]>([]);
+  const [currencies, setCurrencies] = useState<CurrencyBreakdown[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function load() {
       try {
-        const [sumRes, txRes] = await Promise.all([
+        const [sumRes, txRes, curRes] = await Promise.all([
           fetch("/api/budget/transactions/summary"),
           fetch("/api/budget/transactions"),
+          fetch("/api/budget/transactions/currencies"),
         ]);
         if (sumRes.ok) {
           const data = await sumRes.json();
@@ -66,6 +77,10 @@ export default function DashboardPage() {
         if (txRes.ok) {
           const data = await txRes.json();
           setRecentTx((data.transactions || []).slice(0, 10));
+        }
+        if (curRes.ok) {
+          const data = await curRes.json();
+          setCurrencies(data.currencies || []);
         }
       } catch (e) {
         console.error("Dashboard load error:", e);
@@ -93,6 +108,9 @@ export default function DashboardPage() {
     Income: m.income,
     Expenses: m.expense,
   }));
+
+  // Filter currencies with meaningful activity (more than 0 count)
+  const activeCurrencies = currencies.filter((c) => c.count > 0);
 
   return (
     <div className="space-y-6">
@@ -175,6 +193,54 @@ export default function DashboardPage() {
         </Card>
       </div>
 
+      {/* Multi-currency breakdown */}
+      {activeCurrencies.length > 1 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium flex items-center gap-2 text-muted-foreground">
+              <Coins className="h-4 w-4" />
+              Multi-Currency Breakdown
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="flex flex-wrap gap-3">
+              {activeCurrencies.map((c) => {
+                const spent = Math.abs(c.totalSpent);
+                const received = c.totalReceived;
+                return (
+                  <div
+                    key={c.currency}
+                    className="flex items-center gap-2 rounded-lg border px-3 py-2 bg-gray-50/50"
+                  >
+                    <Badge
+                      variant="secondary"
+                      className="text-[10px] px-1.5 py-0 font-mono text-gray-600 bg-gray-200/60"
+                    >
+                      {c.currency}
+                    </Badge>
+                    <div className="flex flex-col">
+                      {spent > 0 && (
+                        <span className="text-xs font-mono text-red-500">
+                          {formatCurrency(-spent, c.currency)} spent
+                        </span>
+                      )}
+                      {received > 0 && (
+                        <span className="text-xs font-mono text-teal-600">
+                          {formatCurrency(received, c.currency)} received
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[10px] text-gray-400 ml-1">
+                      {c.count} tx
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Income/Expense chart */}
       <Card>
         <CardHeader>
@@ -238,6 +304,8 @@ export default function DashboardPage() {
               {recentTx.map((tx) => {
                 const amt = parseFloat(tx.amount);
                 const isPositive = amt >= 0;
+                const cur = tx.currency || "EUR";
+                const isNonEur = cur !== "EUR";
                 return (
                   <div
                     key={tx.id}
@@ -253,14 +321,24 @@ export default function DashboardPage() {
                         </span>
                       </div>
                     </div>
-                    <span
-                      className={`font-mono text-sm font-semibold ${
-                        isPositive ? "text-teal-600" : "text-red-500"
-                      }`}
-                    >
-                      {isPositive ? "+" : ""}
-                      {formatCurrency(amt)}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span
+                        className={`font-mono text-sm font-semibold ${
+                          isPositive ? "text-teal-600" : "text-red-500"
+                        }`}
+                      >
+                        {isPositive ? "+" : ""}
+                        {formatCurrency(amt, cur)}
+                      </span>
+                      {isNonEur && (
+                        <Badge
+                          variant="secondary"
+                          className="text-[10px] px-1.5 py-0 font-normal text-gray-500 bg-gray-100"
+                        >
+                          {cur}
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                 );
               })}

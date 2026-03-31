@@ -12,12 +12,20 @@ export async function GET(request: NextRequest) {
     }
 
     const results = await db
-      .select()
+      .select({
+        id: transactions.id,
+        amount: transactions.amount,
+        currency: transactions.currency,
+        amountEur: transactions.amountEur,
+        description: transactions.description,
+        date: transactions.date,
+        categoryId: transactions.categoryId,
+        isInternal: transactions.isInternal,
+      })
       .from(transactions)
       .where(
         and(
           eq(transactions.userId, session.userId),
-          sql`(${transactions.currency} = 'EUR' OR ${transactions.currency} IS NULL)`,
           sql`(${transactions.isInternal} = false OR ${transactions.isInternal} IS NULL)`
         )
       )

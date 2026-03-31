@@ -67,5 +67,6 @@ export const transactions = pgTable("transactions", {
   currency: varchar("currency", { length: 10 }).default("EUR"),
   isInternal: boolean("is_internal").default(false),
   rawAmount: numeric("raw_amount", { precision: 12, scale: 2 }),
+  amountEur: numeric("amount_eur", { precision: 12, scale: 2 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

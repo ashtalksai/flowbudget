@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -26,6 +27,8 @@ import { Search, Filter, Loader2, ArrowUpRight, ArrowDownRight } from "lucide-re
 interface Transaction {
   id: number;
   amount: string;
+  currency: string | null;
+  amountEur: string | null;
   description: string | null;
   date: string;
   categoryId: number | null;
@@ -98,12 +101,19 @@ export default function BudgetPage() {
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
+  // For summary cards, use amountEur if available, otherwise fall back to amount (EUR transactions)
+  const getEurAmount = (tx: Transaction) => {
+    if (tx.amountEur) return parseFloat(tx.amountEur);
+    if (!tx.currency || tx.currency === "EUR") return parseFloat(tx.amount);
+    return 0; // Non-EUR without amountEur — skip for EUR totals
+  };
+
   const totalIncome = filtered
-    .filter((tx) => parseFloat(tx.amount) >= 0)
-    .reduce((s, tx) => s + parseFloat(tx.amount), 0);
+    .filter((tx) => getEurAmount(tx) >= 0)
+    .reduce((s, tx) => s + getEurAmount(tx), 0);
   const totalExpense = filtered
-    .filter((tx) => parseFloat(tx.amount) < 0)
-    .reduce((s, tx) => s + Math.abs(parseFloat(tx.amount)), 0);
+    .filter((tx) => getEurAmount(tx) < 0)
+    .reduce((s, tx) => s + Math.abs(getEurAmount(tx)), 0);
 
   if (loading) {
     return (
@@ -122,7 +132,7 @@ export default function BudgetPage() {
         </p>
       </div>
 
-      {/* Summary cards */}
+      {/* Summary cards — show EUR totals */}
       <div className="grid gap-4 sm:grid-cols-2">
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
@@ -130,9 +140,9 @@ export default function BudgetPage() {
               <ArrowUpRight className="h-4 w-4 text-teal-600" />
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Total Income (filtered)</p>
+              <p className="text-xs text-muted-foreground">Total Income (EUR, filtered)</p>
               <p className="font-mono text-lg font-bold text-teal-600">
-                +{formatCurrency(totalIncome)}
+                +{formatCurrency(totalIncome, "EUR")}
               </p>
             </div>
           </CardContent>
@@ -143,9 +153,9 @@ export default function BudgetPage() {
               <ArrowDownRight className="h-4 w-4 text-red-500" />
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Total Expenses (filtered)</p>
+              <p className="text-xs text-muted-foreground">Total Expenses (EUR, filtered)</p>
               <p className="font-mono text-lg font-bold text-red-500">
-                -{formatCurrency(totalExpense)}
+                -{formatCurrency(totalExpense, "EUR")}
               </p>
             </div>
           </CardContent>
@@ -242,6 +252,8 @@ export default function BudgetPage() {
                   paged.map((tx) => {
                     const amt = parseFloat(tx.amount);
                     const isPositive = amt >= 0;
+                    const cur = tx.currency || "EUR";
+                    const isNonEur = cur !== "EUR";
                     return (
                       <TableRow key={tx.id}>
                         <TableCell className="text-sm whitespace-nowrap">
@@ -250,13 +262,23 @@ export default function BudgetPage() {
                         <TableCell className="font-medium">
                           {stripSource(tx.description)}
                         </TableCell>
-                        <TableCell
-                          className={`text-right font-mono font-semibold whitespace-nowrap ${
-                            isPositive ? "text-teal-600" : "text-red-500"
-                          }`}
-                        >
-                          {isPositive ? "+" : ""}
-                          {formatCurrency(amt)}
+                        <TableCell className="text-right whitespace-nowrap">
+                          <span
+                            className={`font-mono font-semibold ${
+                              isPositive ? "text-teal-600" : "text-red-500"
+                            }`}
+                          >
+                            {isPositive ? "+" : ""}
+                            {formatCurrency(amt, cur)}
+                          </span>
+                          {isNonEur && (
+                            <Badge
+                              variant="secondary"
+                              className="ml-1.5 text-[10px] px-1.5 py-0 font-normal text-gray-500 bg-gray-100"
+                            >
+                              {cur}
+                            </Badge>
+                          )}
                         </TableCell>
                       </TableRow>
                     );
