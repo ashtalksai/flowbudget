@@ -8,6 +8,22 @@
   }
 }
 
+@layer components {
+  /* Scoped legal-page prose styles */
+  .prose-legal h3 {
+    @apply text-base font-semibold text-charcoal mt-5 mb-2;
+  }
+  .prose-legal ul {
+    @apply list-disc pl-5 space-y-1;
+  }
+  .prose-legal ul li {
+    @apply text-slate-600;
+  }
+  .prose-legal p {
+    /* handled via space-y-3 on parent */
+  }
+}
+
 
 
 @layer base {

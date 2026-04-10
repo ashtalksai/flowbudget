@@ -5,8 +5,17 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://flowbudget.ashketing.com"),
   title: "FlowBudget — Personal Finance Tracker",
-  description: "Track your spending, categorize transactions, manage budgets.",
+  description: "Income smoothing, debt payoff planning, and smart transaction categorization for EU freelancers.",
+  openGraph: {
+    title: "FlowBudget — Personal Finance Tracker",
+    description: "Income smoothing, debt payoff planning, and smart transaction categorization for EU freelancers.",
+    url: "https://flowbudget.ashketing.com",
+    siteName: "FlowBudget",
+    type: "website",
+    images: ["/og-image.png"],
+  },
 };
 
 export default function RootLayout({
